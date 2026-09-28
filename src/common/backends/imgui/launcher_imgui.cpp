@@ -5187,6 +5187,25 @@ static void bind_row_label(const char* label, const ImVec4& colour,
 // CONTROLLER-view rebind page: input source + deadzone, and the keyboard
 // bindings grid — reached from the dashboard CONTROLLER panel's Configure
 // button. The bindings grid walks the ACTIVE SystemProfile's
+// Fill empty/placeholder pad labels for gamepad sources from the connected pad
+// with the same GUID. Leaves existing names (custom or profile) alone.
+static void hydrate_pad_names_from_live(LauncherModel* m) {
+    for (int p = 0; p < LNG_MAX_PLAYERS; ++p) {
+        if (m->s.player_src[p] != 2 || !m->s.player_gamepad_guid[p][0]) continue;
+        if (m->player_pad_name[p][0] &&
+            std::strcmp(m->player_pad_name[p], "Gamepad") != 0) continue;
+        for (int i = 0; i < g_pad_count; ++i) {
+            if (!g_pads[i].name[0] ||
+                std::strcmp(g_pads[i].guid, m->s.player_gamepad_guid[p]) != 0)
+                continue;
+            std::snprintf(m->player_pad_name[p], sizeof(m->player_pad_name[p]),
+                          "%s", g_pads[i].name);
+            if (!m->player_pad_id[p]) m->player_pad_id[p] = g_pads[i].id;
+            break;
+        }
+    }
+}
+
 // ControllerSpec.buttons[]/button_count (launcher_system.h) so each system
 // renders its own real vocabulary (SNES: A/B/X/Y/L/R/...; PSX: Triangle/
 // Circle/Cross/Square/L1/L2/R1/R2/L3/R3/...) instead of a hardcoded SNES set.
@@ -13889,6 +13908,10 @@ extern "C" LngAction launcher_backend_run(LauncherPlatform* p,
         // SNES: same purpose, from this console's own profile store. Run every
         // frame so a pad plugged in after start-up picks up its label too.
         launcher_binds_hydrate_snes_pad_names(m, g_pads, g_pad_count);
+
+        // Any console: a source restored from settings carries only the saved
+        // GUID, so the label would show the raw GUID. Take the live pad's name.
+        hydrate_pad_names_from_live(m);
 
         // Pad capture release-gate: clear once the selected pad is fully at
         // rest (covers the case where SDL stops sending AXIS_MOTION at rest).

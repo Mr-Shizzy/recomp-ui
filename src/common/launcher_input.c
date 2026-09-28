@@ -123,6 +123,16 @@ uint32_t launcher_input_gamepad_button_mask(uint32_t id) {
     return mask;
 }
 
+/* SDL GUID strings carry a CRC16 of the device NAME in hex chars 4-7. The
+ * reported name (and so the CRC) changes with the driver path -- XInput vs
+ * RawInput/HIDAPI, USB vs Bluetooth -- so one physical pad can come back with a
+ * different GUID and a saved selection stops matching (the launcher then shows
+ * the raw GUID). Zero the CRC so the bus/vendor/product/version identity is
+ * what persists and compares. */
+static void guid_strip_crc(char* guid) {
+    if (strlen(guid) >= 8) memcpy(guid + 4, "0000", 4);
+}
+
 int launcher_input_poll(LauncherPad* out, int max, int enable_gyro) {
     int n = 0;
     if (!out || max <= 0) return 0;
@@ -141,6 +151,7 @@ int launcher_input_poll(LauncherPad* out, int max, int enable_gyro) {
             {
                 SDL_GUID g = SDL_GetGamepadGUIDForID(ids[i]);
                 SDL_GUIDToString(g, out[n].guid, (int)sizeof(out[n].guid));
+                guid_strip_crc(out[n].guid);
             }
             OpenPad* opened = find_open(out[n].id);
             if (!opened) {
@@ -200,6 +211,7 @@ int launcher_input_poll(LauncherPad* out, int max, int enable_gyro) {
         {
             SDL_JoystickGUID g = SDL_JoystickGetDeviceGUID(i);
             SDL_JoystickGetGUIDString(g, out[n].guid, (int)sizeof(out[n].guid));
+            guid_strip_crc(out[n].guid);
         }
         OpenPad* opened = find_open(out[n].id);
         if (!opened) {
