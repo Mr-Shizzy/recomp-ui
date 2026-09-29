@@ -1849,11 +1849,9 @@ static const char* settings_row_tip(const char* label) {
                         "in and out of.\nExclusive: take over the screen completely (can lower lag)." },
         { "Integer scaling", "Only enlarge by whole steps (2x, 3x...) so every pixel is the "
                              "same size and stays sharp. Can leave black borders." },
-        { "Renderer", "How the game's picture is drawn on your screen.
-"
+        { "Renderer", "How the game's picture is drawn on your screen.\n"
                       "Accelerated (or the first choice): uses your graphics card. Smooth and "
-                      "fast; use this.
-"
+                      "fast; use this.\n"
                       "Software: uses only the processor. Try it if the picture stays black, "
                       "flickers or the game crashes." },
         { "Linear filtering", "Smooth the picture when it is enlarged. Off keeps the pixels "
@@ -3943,9 +3941,7 @@ void draw_display_controls(LauncherModel* m, const LauncherTheme& th) {
          * hover away rather than lost. */
         if (ImGui::IsItemHovered()) {           /* what it is, plus the full choice */
             char tip[512];
-            snprintf(tip, sizeof(tip), "%s
-
-Now: %s", ui_text(settings_row_tip("Renderer")),
+            snprintf(tip, sizeof(tip), "%s\n\nNow: %s", ui_text(settings_row_tip("Renderer")),
                      ui_text(launcher_model_renderer_label(m)));
             wrapped_tooltip(tip);
         }
