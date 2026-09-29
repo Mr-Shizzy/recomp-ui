@@ -4190,11 +4190,20 @@ void draw_display_controls(LauncherModel* m, const LauncherTheme& th) {
 // AutoResizeY (deep surface, more rows than the fixed band fits) vs a fixed
 // row_h band with no_scroll (legacy minimal surface) — exactly the sizing
 // draw_settings used to pick inline, now co-located with its own content.
+/* Game-defined Settings rows (host pages with in_settings; defined below). */
+static bool host_has_merged(const LauncherModel* m, const char* card);
+static void draw_host_merged(LauncherModel* m, const LauncherTheme& th, const char* card);
+static void draw_host_settings_cards(LauncherModel* m, const LauncherTheme& th,
+                                     float y_left, float y_right);
+
 void panel_video_draw(LauncherModel* m, const LauncherTheme* th) {
     // video_card_grows() folds in NES's legacy-surface additions (Integer
     // scaling row, HD texture pack block) alongside the deep/widescreen surfaces.
-    if (video_card_grows(m) || !g_settings_two_col) {
-        if (begin_panel("disp", 0, false)) draw_display_controls(m, *th);
+    if (video_card_grows(m) || !g_settings_two_col || host_has_merged(m, "display")) {
+        if (begin_panel("disp", 0, false)) {
+            draw_display_controls(m, *th);
+            draw_host_merged(m, *th, "display");
+        }
         end_panel();
     } else {
         if (begin_panel("disp", 0, true, /*no_scroll*/true)) draw_display_controls(m, *th);
@@ -4301,9 +4310,13 @@ void draw_audio_controls(LauncherModel* m, const LauncherTheme& th) {
 // panel_video_draw, decided from the same "deep" predicate draw_settings used
 // to compute inline.
 void panel_audio_draw(LauncherModel* m, const LauncherTheme* th) {
-    const bool deep_audio = m->has_spu_hq || m->num_languages > 0 || m->num_audio_devices > 0;   /* deadzone moved to controller card */
+    const bool deep_audio = m->has_spu_hq || m->num_languages > 0 || m->num_audio_devices > 0 ||
+                            host_has_merged(m, "audio");   /* deadzone moved to controller card */
     if (deep_audio || !g_settings_two_col) {
-        if (begin_panel("audio", 0, false)) draw_audio_controls(m, *th);
+        if (begin_panel("audio", 0, false)) {
+            draw_audio_controls(m, *th);
+            draw_host_merged(m, *th, "audio");
+        }
         end_panel();
     } else {
         if (begin_panel("audio", 0, true, /*no_scroll*/true)) draw_audio_controls(m, *th);
@@ -4726,8 +4739,9 @@ void draw_settings(LauncherModel* m, const LauncherTheme& th) {
     const float half = two_col ? (full_w - gap) * 0.5f : full_w;
     g_settings_two_col = two_col;   // read by panel_video_draw/panel_audio_draw
 
-    const bool deep_display = video_card_grows(m);   // superset of any_deep_display: folds in NES + widescreen (N64 covered too)
-    const bool deep_audio   = m->has_spu_hq || m->num_languages > 0 || m->num_audio_devices > 0;   /* deadzone moved to controller card */
+    const bool deep_display = video_card_grows(m) || host_has_merged(m, "display");   // superset of any_deep_display: folds in NES + widescreen (N64 covered too)
+    const bool deep_audio   = m->has_spu_hq || m->num_languages > 0 || m->num_audio_devices > 0 ||
+                              host_has_merged(m, "audio");   /* deadzone moved to controller card */
 
     const LauncherPanel* video_p   = find_composed(prof->panels_settings, "video", m);
     const LauncherPanel* audio_p   = find_composed(prof->panels_settings, "audio", m);
@@ -4820,6 +4834,18 @@ void draw_settings(LauncherModel* m, const LauncherTheme& th) {
         const float below_y =
             (left_bottom > stack_bottom) ? left_bottom : stack_bottom;
         ImGui::SetCursorScreenPos(ImVec2(content_left_x, below_y + gap));
+    }
+    /* The game's own settings (host pages with in_settings), filling in
+     * under the shorter column, then HOTKEYS. */
+    if (m->host_page_count) {
+        const float right_bottom = stacked_side ? stack_bottom : audio_bottom;
+        if (two_col && video_p && audio_p) {
+            ImGui::SetCursorScreenPos(ImVec2(content_left_x, ImGui::GetCursorScreenPos().y));
+            draw_host_settings_cards(m, th, left_bottom + gap, right_bottom + gap);
+        } else {
+            ImGui::Dummy(ImVec2(0, gap * 0.5f));
+            draw_host_settings_cards(m, th, -1.0f, -1.0f);
+        }
     }
     if (hotkeys_p && !stacked_hotkeys) hotkeys_p->draw(m, &th);
 }
@@ -11597,10 +11623,10 @@ static const LauncherTexture& host_image(const char* key, const char* path, int 
 }
 
 static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
-                          const RecompLauncherCHostPage* pg, int i,
+                          const RecompLauncherCHostPage* pg, int page, int i,
                           const RecompLauncherCHostRow& r) {
     char id[32];
-    snprintf(id, sizeof(id), "##host%d_%d", m->host_page_sel, i);
+    snprintf(id, sizeof(id), "##host%d_%d", page, i);
     const char* rom = launcher_model_effective_rom_path(m);
     if (!rom) rom = "";
     if (r.disabled) ImGui::BeginDisabled();
@@ -11685,49 +11711,97 @@ static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
         ImGui::SetTooltip("%s", r.help);
 }
 
-void draw_host_page(LauncherModel* m, const LauncherTheme& th) {
-    const RecompLauncherCHostPage* pg = host_page(m);
-    if (!pg || !pg->row_count || !pg->row_get || !pg->row_set) return;
-    const char* st = pg->status ? pg->status(pg->ctx) : nullptr;
-    if (st && st[0]) {
-        ImGui::TextColored(col(th.accent2), "%s", st);
-        ImGui::Spacing();
-    }
+/* All rows of page pg, read fresh. */
+static std::vector<RecompLauncherCHostRow> host_rows(const RecompLauncherCHostPage* pg) {
+    std::vector<RecompLauncherCHostRow> rows;
+    if (!pg || !pg->row_count || !pg->row_get || !pg->row_set) return rows;
     const int n = pg->row_count(pg->ctx);
-    std::vector<RecompLauncherCHostRow> rows((size_t)(n > 0 ? n : 0));
+    rows.resize((size_t)(n > 0 ? n : 0));
     for (int i = 0; i < n; ++i) {
         rows[(size_t)i] = RecompLauncherCHostRow{};
         pg->row_get(pg->ctx, i, &rows[(size_t)i]);
     }
-    /* Cards: [start, end) row ranges, a new one at every HEADER. */
+    return rows;
+}
+
+/* Cards: [start, end) row ranges, a new one at every HEADER. */
+static std::vector<std::pair<int, int>> host_cards(const std::vector<RecompLauncherCHostRow>& rows) {
     std::vector<std::pair<int, int>> cards;
-    for (int i = 0; i < n; ++i)
+    for (int i = 0; i < (int)rows.size(); ++i)
         if (i == 0 || rows[(size_t)i].type == RECOMP_HOST_ROW_HEADER) cards.push_back({ i, i + 1 });
         else cards.back().second = i + 1;
+    return cards;
+}
+
+/* Does an in_settings page merge a section into built-in card `card`? */
+static bool host_has_merged(const LauncherModel* m, const char* card) {
+    for (int p = 0; m && p < m->host_page_count; ++p) {
+        const RecompLauncherCHostPage* pg = m->host_pages[p];
+        if (!pg || !pg->in_settings) continue;
+        for (const RecompLauncherCHostRow& r : host_rows(pg))
+            if (r.type == RECOMP_HOST_ROW_HEADER && std::strcmp(r.merge, card) == 0) return true;
+    }
+    return false;
+}
+
+/* Those sections' rows, drawn inside the built-in card. */
+static void draw_host_merged(LauncherModel* m, const LauncherTheme& th, const char* card) {
+    for (int p = 0; p < m->host_page_count; ++p) {
+        const RecompLauncherCHostPage* pg = m->host_pages[p];
+        if (!pg || !pg->in_settings) continue;
+        const std::vector<RecompLauncherCHostRow> rows = host_rows(pg);
+        for (const auto& c : host_cards(rows)) {
+            const RecompLauncherCHostRow& h = rows[(size_t)c.first];
+            if (h.type != RECOMP_HOST_ROW_HEADER || std::strcmp(h.merge, card) != 0) continue;
+            for (int i = c.first + 1; i < c.second; ++i) {
+                ImGui::PushID(p * 1000 + i);
+                draw_host_row(m, th, pg, p, i, rows[(size_t)i]);
+                ImGui::PopID();
+            }
+        }
+    }
+}
+
+/* Lay out a page's cards (in Settings: only the unmerged ones) in two
+ * independent columns when the window is wide enough, like Settings.
+ * y_left/y_right >= 0: the columns already end there (Settings' own cards),
+ * so the first cards fill in under the shorter one. */
+static void draw_host_card_flow(LauncherModel* m, const LauncherTheme& th,
+                                const RecompLauncherCHostPage* pg, int page, bool settings,
+                                float y_left = -1.0f, float y_right = -1.0f) {
+    const std::vector<RecompLauncherCHostRow> rows = host_rows(pg);
+    std::vector<std::pair<int, int>> cards;
+    for (const auto& c : host_cards(rows))
+        if (!settings || rows[(size_t)c.first].type != RECOMP_HOST_ROW_HEADER ||
+            !rows[(size_t)c.first].merge[0])
+            cards.push_back(c);
+    if (cards.empty()) return;
 
     const float gap = px(th.spacing_md);
     const float full_w = ImGui::GetContentRegionAvail().x;
     const float col_floor = ImGui::CalcTextSize("Affine background smoothing").x +
                             px(SETTINGS_CTRL_W) + px(th.spacing_md) * 3.0f;
-    const bool two_col = (full_w - gap) * 0.5f >= col_floor && cards.size() > 1;
+    const bool staggered = y_left >= 0.0f && y_right >= 0.0f;
+    const bool two_col = (full_w - gap) * 0.5f >= col_floor && (cards.size() > 1 || staggered);
     const float half = two_col ? (full_w - gap) * 0.5f : full_w;
 
-    /* Two independent columns: each card goes to the shorter one. */
+    /* Each card goes to the shorter column. */
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     float col_y[2] = { origin.y, origin.y };
-    float bottom = origin.y;
+    if (staggered && two_col) { col_y[0] = y_left; col_y[1] = y_right; }
+    float bottom = col_y[0] > col_y[1] ? col_y[0] : col_y[1];
     for (size_t c = 0; c < cards.size(); ++c) {
         const int k = two_col && col_y[1] < col_y[0] ? 1 : 0;
         ImGui::SetCursorScreenPos(ImVec2(origin.x + (k ? half + gap : 0.0f), col_y[k]));
         char cid[48];
-        snprintf(cid, sizeof(cid), "host_card_%d_%d", m->host_page_sel, (int)c);
+        snprintf(cid, sizeof(cid), "host_card_%d_%d", page, (int)c);
         ImGui::BeginChild(cid, ImVec2(half, 0.0f),
                           ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
         for (int i = cards[c].first; i < cards[c].second; ++i) {
             const RecompLauncherCHostRow& r = rows[(size_t)i];
             if (r.type == RECOMP_HOST_ROW_HEADER) { eyebrow_tracked(r.label); continue; }
-            ImGui::PushID(i);
-            draw_host_row(m, th, pg, i, r);
+            ImGui::PushID(page * 1000 + i);
+            draw_host_row(m, th, pg, page, i, r);
             ImGui::PopID();
         }
         ImGui::EndChild();
@@ -11736,6 +11810,34 @@ void draw_host_page(LauncherModel* m, const LauncherTheme& th) {
     }
     ImGui::SetCursorScreenPos(ImVec2(origin.x, bottom));
     ImGui::Dummy(ImVec2(0, 0));
+}
+
+/* Settings: the in_settings pages' own cards, under the built-in ones
+ * (y_left/y_right: where Settings' two columns end, or -1). */
+static void draw_host_settings_cards(LauncherModel* m, const LauncherTheme& th,
+                                     float y_left, float y_right) {
+    for (int p = 0; p < m->host_page_count; ++p) {
+        const RecompLauncherCHostPage* pg = m->host_pages[p];
+        if (!pg || !pg->in_settings) continue;
+        const char* st = pg->status ? pg->status(pg->ctx) : nullptr;
+        if (st && st[0]) {
+            ImGui::TextColored(col(th.accent2), "%s", st);
+            y_left = y_right = -1.0f;           /* the message sits between */
+        }
+        draw_host_card_flow(m, th, pg, p, true, y_left, y_right);
+        y_left = y_right = -1.0f;
+    }
+}
+
+void draw_host_page(LauncherModel* m, const LauncherTheme& th) {
+    const RecompLauncherCHostPage* pg = host_page(m);
+    if (!pg) return;
+    const char* st = pg->status ? pg->status(pg->ctx) : nullptr;
+    if (st && st[0]) {
+        ImGui::TextColored(col(th.accent2), "%s", st);
+        ImGui::Spacing();
+    }
+    draw_host_card_flow(m, th, pg, m->host_page_sel, false);
 }
 
 // ---- panel registry: id -> {view, slot, available, draw} --------------------
@@ -13341,7 +13443,10 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
         const float right = ImGui::GetWindowContentRegionMax().x;
         const float y = hdr_top + px(6.0f);
         if (m->view == LNG_VIEW_DASHBOARD) {
-            const int count = 1 + (m->mods ? 1 : 0) + m->host_page_count +
+            int nav_pages = 0;
+            for (int hp_i = 0; hp_i < m->host_page_count; ++hp_i)
+                nav_pages += m->host_pages[hp_i] && !m->host_pages[hp_i]->in_settings;
+            const int count = 1 + (m->mods ? 1 : 0) + nav_pages +
                               (m->has_assist_tools ? 1 : 0) +
                               ((m->credits_text && m->credits_text[0]) ? 1 : 0);
             const float w = px(110.0f);
@@ -13351,6 +13456,7 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
                 launcher_model_set_view(m, LNG_VIEW_SETTINGS);
             for (int hp_i = 0; hp_i < m->host_page_count; ++hp_i) {
                 const RecompLauncherCHostPage* hp_pg = m->host_pages[hp_i];
+                if (!hp_pg || hp_pg->in_settings) continue;   /* shown inside Settings */
                 ImGui::SameLine(0, gap);
                 ImGui::PushID(hp_i);
                 if (ImGui::Button(hp_pg && hp_pg->title ? hp_pg->title : "Game",

@@ -1061,6 +1061,9 @@ typedef struct RecompLauncherCHostRow {
     int  choice_count;        /* CHOICE */
     int  disabled;            /* greyed out and inert */
     char image_path[1024];    /* IMAGE */
+    /* HEADER rows of an in_settings page: "display" or "audio" appends the
+     * section's rows to that built-in Settings card instead of a new card. */
+    char merge[32];
 } RecompLauncherCHostRow;
 
 typedef struct RecompLauncherCHostPage {
@@ -1075,6 +1078,9 @@ typedef struct RecompLauncherCHostPage {
     int  (*row_set)(void* ctx, int index, int value, const char* rom_path);
     /* Optional one-line message shown at the top of the page ("" = none). */
     const char* (*status)(void* ctx);
+    /* Non-zero: no page of its own; the rows join the Settings page (the
+     * game's options next to the launcher's, one place for everything). */
+    int in_settings;
 } RecompLauncherCHostPage;
 
 // Plain-C mirror of the launcher's internal settings (bools as int).
