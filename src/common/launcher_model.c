@@ -540,6 +540,8 @@ void launcher_model_init(LauncherModel* m,
         m->rom_patch_note       = game->rom_patch_note;
         m->rom_patch_cache_dir  = game->rom_patch_cache_dir;
         m->rom_patch_required_sha1 = game->rom_patch_required_sha1;
+        m->host_pages           = game->host_pages;
+        m->host_page_count      = game->host_pages ? clampi(game->host_page_count, 0, 8) : 0;
 #if RECOMP_UI_ENABLE_MODS
         m->mods                 = game->mods;
 #else

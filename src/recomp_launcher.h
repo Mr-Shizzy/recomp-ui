@@ -1030,6 +1030,53 @@ typedef struct RecompLauncherCModProvider {
     int hide_hidden_features;
 } RecompLauncherCModProvider;
 
+/* ---- host pages -----------------------------------------------------------
+ * A game can add its own top-level pages to the launcher (a button next to
+ * Settings on the dashboard), built from a flat list of rows the host
+ * describes: its in-game options menu, a mod picker, tools. The launcher only
+ * renders and reports clicks; the host owns the values and saves them itself
+ * (immediately, on row_set), so the same settings stay in sync with any
+ * in-game menu. HEADER rows start a new card. Rows are re-queried every
+ * frame, so a host may change labels, values, disabled state or the row
+ * count in response to any row_set. */
+#define RECOMP_LAUNCHER_HAS_HOST_PAGES 1
+
+typedef enum RecompLauncherCHostRowType {
+    RECOMP_HOST_ROW_HEADER = 0,   /* card title; label only */
+    RECOMP_HOST_ROW_TOGGLE = 1,   /* checkbox; value 0/1 */
+    RECOMP_HOST_ROW_CHOICE = 2,   /* dropdown; value = index, labels via choice_label */
+    RECOMP_HOST_ROW_RANGE  = 3,   /* slider; value in min..max by step, shown as value_text */
+    RECOMP_HOST_ROW_BUTTON = 4,   /* button; row_set(value 1) = pressed */
+    RECOMP_HOST_ROW_TEXT   = 5,   /* wrapped muted text (label) */
+    RECOMP_HOST_ROW_IMAGE  = 6,   /* PNG at image_path; value = version (change it to reload) */
+} RecompLauncherCHostRowType;
+
+typedef struct RecompLauncherCHostRow {
+    int  type;                /* RecompLauncherCHostRowType */
+    char label[160];
+    char help[256];           /* tooltip; "" = none */
+    int  value;
+    int  min_value, max_value, step;
+    char value_text[64];      /* RANGE: display text for value ("" = the number) */
+    int  choice_count;        /* CHOICE */
+    int  disabled;            /* greyed out and inert */
+    char image_path[1024];    /* IMAGE */
+} RecompLauncherCHostRow;
+
+typedef struct RecompLauncherCHostPage {
+    void*       ctx;
+    const char* title;        /* nav button + page heading, e.g. "Options" */
+    int  (*row_count)(void* ctx);
+    int  (*row_get)(void* ctx, int index, RecompLauncherCHostRow* out);
+    /* CHOICE rows: label of choice `choice` into out (NUL-terminated). */
+    int  (*choice_label)(void* ctx, int index, int choice, char* out, int cap);
+    /* New value for a TOGGLE/CHOICE/RANGE row, or a BUTTON press (value 1).
+     * rom_path is the ROM currently selected in the launcher ("" if none). */
+    int  (*row_set)(void* ctx, int index, int value, const char* rom_path);
+    /* Optional one-line message shown at the top of the page ("" = none). */
+    const char* (*status)(void* ctx);
+} RecompLauncherCHostPage;
+
 // Plain-C mirror of the launcher's internal settings (bools as int).
 struct RecompLauncherCSettings {
     int  output_method;     // 0 SDL, 1 SDL-software, 2 OpenGL
@@ -2031,6 +2078,10 @@ typedef struct RecompLauncherCGameInfo {
     // is the native/default view; omit adaptive for games where it is unsafe.
     const char* const* netplay_view_labels;
     int num_netplay_view_labels;
+    /* Game-defined pages (see RecompLauncherCHostPage). Appended for ABI
+     * stability; zero leaves the launcher exactly as before. */
+    const RecompLauncherCHostPage* const* host_pages;
+    int host_page_count;
 } RecompLauncherCGameInfo;
 #define RECOMP_LAUNCHER_HAS_NETPLAY_VIEW 1
 #define RECOMP_LAUNCHER_HAS_SNES_DISPLAY_ASPECT 1

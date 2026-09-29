@@ -9,6 +9,7 @@
 //
 //   view:dashboard|settings|controller|assist_tools|credits
 //                                          switch view (no clicking required)
+//   view:hostN                           the game's Nth host page (0-based)
 //   player:0|1                           which player the controller view edits
 //   size:WxH                             resize the window (tests live reflow)
 //   click:X,Y                            synthetic click at logical coords

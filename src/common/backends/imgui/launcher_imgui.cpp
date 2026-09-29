@@ -11571,6 +11571,173 @@ void draw_mods(LauncherModel* m, const LauncherTheme& th) {
         draw_mod_features(m, th);
 }
 
+// ---- host pages ----------------------------------------------------------------
+// A game-defined page (GameInfo.host_pages): rows grouped into cards at each
+// HEADER row, laid out in two columns when the window is wide enough, like
+// Settings. The host owns every value; a control only reports the new value
+// through row_set, and the next frame re-reads the rows.
+static const RecompLauncherCHostPage* host_page(const LauncherModel* m) {
+    if (!m || m->host_page_sel < 0 || m->host_page_sel >= m->host_page_count) return nullptr;
+    return m->host_pages[m->host_page_sel];
+}
+
+/* One cached texture per IMAGE row path + version. */
+struct HostImage { std::string path; int version = -1; LauncherTexture tex{}; };
+static std::unordered_map<std::string, HostImage> g_host_images;
+
+static const LauncherTexture& host_image(const char* key, const char* path, int version) {
+    HostImage& hi = g_host_images[key];
+    if (hi.path != path || hi.version != version) {
+        if (hi.tex.id) launcher_texture_free(&hi.tex);
+        hi.tex = path && path[0] ? launcher_texture_load(path) : LauncherTexture{};
+        hi.path = path ? path : "";
+        hi.version = version;
+    }
+    return hi.tex;
+}
+
+static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
+                          const RecompLauncherCHostPage* pg, int i,
+                          const RecompLauncherCHostRow& r) {
+    char id[32];
+    snprintf(id, sizeof(id), "##host%d_%d", m->host_page_sel, i);
+    const char* rom = launcher_model_effective_rom_path(m);
+    if (!rom) rom = "";
+    if (r.disabled) ImGui::BeginDisabled();
+    switch (r.type) {
+    case RECOMP_HOST_ROW_TOGGLE: {
+        row_label_right(r.label, th, ImGui::GetFrameHeight());
+        bool v = r.value != 0;
+        if (ImGui::Checkbox(id, &v)) pg->row_set(pg->ctx, i, v ? 1 : 0, rom);
+        break;
+    }
+    case RECOMP_HOST_ROW_CHOICE: {
+        char cur[128] = "";
+        if (pg->choice_label) pg->choice_label(pg->ctx, i, r.value, cur, sizeof(cur));
+        /* Wide enough for the longest choice (mod names), within reason. */
+        float cw = px(SETTINGS_CTRL_W);
+        for (int c = 0; c < r.choice_count; ++c) {
+            char lbl[128] = "";
+            if (pg->choice_label) pg->choice_label(pg->ctx, i, c, lbl, sizeof(lbl));
+            const float w = ImGui::CalcTextSize(lbl).x + ImGui::GetFrameHeight() +
+                            ImGui::GetStyle().FramePadding.x * 3.0f;
+            if (w > cw) cw = w;
+        }
+        const float cap = ImGui::GetContentRegionAvail().x * 0.6f;
+        if (cw > cap) cw = cap;
+        row_label_right(r.label, th, cw);
+        ImGui::SetNextItemWidth(cw);
+        if (ImGui::BeginCombo(id, cur)) {
+            for (int c = 0; c < r.choice_count; ++c) {
+                char lbl[128] = "";
+                if (pg->choice_label) pg->choice_label(pg->ctx, i, c, lbl, sizeof(lbl));
+                ImGui::PushID(c);
+                if (ImGui::Selectable(lbl, c == r.value) && c != r.value)
+                    pg->row_set(pg->ctx, i, c, rom);
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        break;
+    }
+    case RECOMP_HOST_ROW_RANGE: {
+        row_label_right(r.label, th, px(SETTINGS_CTRL_W));
+        ImGui::SetNextItemWidth(px(SETTINGS_CTRL_W));
+        int v = r.value;
+        char fmt[80];
+        if (r.value_text[0]) {                  /* the host's text; % escaped */
+            size_t k = 0;
+            for (const char* c = r.value_text; *c && k + 2 < sizeof(fmt); ++c) {
+                if (*c == '%') fmt[k++] = '%';
+                fmt[k++] = *c;
+            }
+            fmt[k] = '\0';
+        } else {
+            snprintf(fmt, sizeof(fmt), "%%d");
+        }
+        if (ImGui::SliderInt(id, &v, r.min_value, r.max_value, fmt)) {
+            int step = r.step > 0 ? r.step : 1;
+            v = r.min_value + (v - r.min_value + step / 2) / step * step;
+            if (v != r.value) pg->row_set(pg->ctx, i, v, rom);
+        }
+        break;
+    }
+    case RECOMP_HOST_ROW_BUTTON:
+        if (ImGui::Button(r.label, ImVec2(ImGui::GetContentRegionAvail().x, 0)))
+            pg->row_set(pg->ctx, i, 1, rom);
+        break;
+    case RECOMP_HOST_ROW_TEXT:
+        ImGui::PushStyleColor(ImGuiCol_Text, col(th.text_muted));
+        ImGui::TextWrapped("%s", r.label);
+        ImGui::PopStyleColor();
+        break;
+    case RECOMP_HOST_ROW_IMAGE: {
+        const LauncherTexture& t = host_image(id, r.image_path, r.value);
+        const float avail = ImGui::GetContentRegionAvail().x;
+        if (t.id) image_fit_centered(t, 280.0f, 180.0f, avail);
+        break;
+    }
+    default:
+        break;
+    }
+    if (r.disabled) ImGui::EndDisabled();
+    if (r.help[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", r.help);
+}
+
+void draw_host_page(LauncherModel* m, const LauncherTheme& th) {
+    const RecompLauncherCHostPage* pg = host_page(m);
+    if (!pg || !pg->row_count || !pg->row_get || !pg->row_set) return;
+    const char* st = pg->status ? pg->status(pg->ctx) : nullptr;
+    if (st && st[0]) {
+        ImGui::TextColored(col(th.accent2), "%s", st);
+        ImGui::Spacing();
+    }
+    const int n = pg->row_count(pg->ctx);
+    std::vector<RecompLauncherCHostRow> rows((size_t)(n > 0 ? n : 0));
+    for (int i = 0; i < n; ++i) {
+        rows[(size_t)i] = RecompLauncherCHostRow{};
+        pg->row_get(pg->ctx, i, &rows[(size_t)i]);
+    }
+    /* Cards: [start, end) row ranges, a new one at every HEADER. */
+    std::vector<std::pair<int, int>> cards;
+    for (int i = 0; i < n; ++i)
+        if (i == 0 || rows[(size_t)i].type == RECOMP_HOST_ROW_HEADER) cards.push_back({ i, i + 1 });
+        else cards.back().second = i + 1;
+
+    const float gap = px(th.spacing_md);
+    const float full_w = ImGui::GetContentRegionAvail().x;
+    const float col_floor = ImGui::CalcTextSize("Affine background smoothing").x +
+                            px(SETTINGS_CTRL_W) + px(th.spacing_md) * 3.0f;
+    const bool two_col = (full_w - gap) * 0.5f >= col_floor && cards.size() > 1;
+    const float half = two_col ? (full_w - gap) * 0.5f : full_w;
+
+    /* Two independent columns: each card goes to the shorter one. */
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    float col_y[2] = { origin.y, origin.y };
+    float bottom = origin.y;
+    for (size_t c = 0; c < cards.size(); ++c) {
+        const int k = two_col && col_y[1] < col_y[0] ? 1 : 0;
+        ImGui::SetCursorScreenPos(ImVec2(origin.x + (k ? half + gap : 0.0f), col_y[k]));
+        char cid[48];
+        snprintf(cid, sizeof(cid), "host_card_%d_%d", m->host_page_sel, (int)c);
+        ImGui::BeginChild(cid, ImVec2(half, 0.0f),
+                          ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+        for (int i = cards[c].first; i < cards[c].second; ++i) {
+            const RecompLauncherCHostRow& r = rows[(size_t)i];
+            if (r.type == RECOMP_HOST_ROW_HEADER) { eyebrow_tracked(r.label); continue; }
+            ImGui::PushID(i);
+            draw_host_row(m, th, pg, i, r);
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+        col_y[k] = ImGui::GetItemRectMax().y + gap;
+        if (col_y[k] > bottom) bottom = col_y[k];
+    }
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, bottom));
+    ImGui::Dummy(ImVec2(0, 0));
+}
+
 // ---- panel registry: id -> {view, slot, available, draw} --------------------
 // The single implementation table for every panel this backend draws. A
 // SystemProfile's panels_dashboard/panels_settings/panels_controller arrays
@@ -13174,7 +13341,7 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
         const float right = ImGui::GetWindowContentRegionMax().x;
         const float y = hdr_top + px(6.0f);
         if (m->view == LNG_VIEW_DASHBOARD) {
-            const int count = 1 + (m->mods ? 1 : 0) +
+            const int count = 1 + (m->mods ? 1 : 0) + m->host_page_count +
                               (m->has_assist_tools ? 1 : 0) +
                               ((m->credits_text && m->credits_text[0]) ? 1 : 0);
             const float w = px(110.0f);
@@ -13182,6 +13349,17 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
             ImGui::SetCursorPos(ImVec2(right - total, y));
             if (ImGui::Button(ui_text("Settings"), ImVec2(w, px(34))))
                 launcher_model_set_view(m, LNG_VIEW_SETTINGS);
+            for (int hp_i = 0; hp_i < m->host_page_count; ++hp_i) {
+                const RecompLauncherCHostPage* hp_pg = m->host_pages[hp_i];
+                ImGui::SameLine(0, gap);
+                ImGui::PushID(hp_i);
+                if (ImGui::Button(hp_pg && hp_pg->title ? hp_pg->title : "Game",
+                                  ImVec2(w, px(34)))) {
+                    m->host_page_sel = hp_i;
+                    launcher_model_set_view(m, LNG_VIEW_HOST_PAGE);
+                }
+                ImGui::PopID();
+            }
             if (m->mods) {
                 ImGui::SameLine(0, gap);
                 if (ImGui::Button(ui_text("Mods"), ImVec2(w, px(34))))
@@ -13273,6 +13451,7 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
         case LNG_VIEW_MODS:       draw_mods(m, th);                 break;
         case LNG_VIEW_ASSIST_TOOLS: draw_assist_tools(m, th);        break;
         case LNG_VIEW_CREDITS:      draw_credits(m, th);             break;
+        case LNG_VIEW_HOST_PAGE:    draw_host_page(m, th);           break;
         case LNG_VIEW_LOBBY:        draw_lobby(m, th);               break;
     }
     end_container();

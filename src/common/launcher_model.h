@@ -59,6 +59,8 @@ typedef enum {
      * skipped entirely when this client is already signed in or when the
      * server offers no logins -- see draw_netplay_mode_page. */
     LNG_VIEW_NETPLAY_SIGNIN,
+    /* A game-defined page (GameInfo.host_pages[host_page_sel]). */
+    LNG_VIEW_HOST_PAGE,
     /* Keep last. launcher_model_set_view validates against this rather than
      * against the last real view, which is what silently swallowed the two
      * views above when they were first added. */
@@ -333,6 +335,10 @@ typedef struct {
     bool setup_wizard_supported;
     const RecompLauncherCNetplayCallbacks* netplay;
     const RecompLauncherCModProvider* mods;
+    /* Game-defined pages; host_page_sel is the one LNG_VIEW_HOST_PAGE shows. */
+    const RecompLauncherCHostPage* const* host_pages;
+    int       host_page_count;
+    int       host_page_sel;
     int       mod_selected;
     int       mod_package_selected;
     bool      mod_show_packages;

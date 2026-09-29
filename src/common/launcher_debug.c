@@ -188,6 +188,11 @@ void launcher_debug_step(LauncherPlatform* p, LauncherModel* m) {
             launcher_model_set_view(m, LNG_VIEW_NETPLAY);
         }
         else if (strcmp(v, "lobby") == 0) launcher_model_set_view(m, LNG_VIEW_LOBBY);
+        /* view:hostN -- the game's Nth host page (GameInfo.host_pages). */
+        else if (strncmp(v, "host", 4) == 0 && atoi(v + 4) < m->host_page_count) {
+            m->host_page_sel = atoi(v + 4);
+            launcher_model_set_view(m, LNG_VIEW_HOST_PAGE);
+        }
     } else if (strncmp(c, "player:", 7) == 0) {
         // Select which player the Controller view configures. Clamp to the
         // launcher's real player range (N64 profiles run up to 4) instead of
