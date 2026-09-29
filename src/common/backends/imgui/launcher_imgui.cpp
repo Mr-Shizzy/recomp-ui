@@ -1849,8 +1849,13 @@ static const char* settings_row_tip(const char* label) {
                         "in and out of.\nExclusive: take over the screen completely (can lower lag)." },
         { "Integer scaling", "Only enlarge by whole steps (2x, 3x...) so every pixel is the "
                              "same size and stays sharp. Can leave black borders." },
-        { "Renderer", "How the picture is drawn: with the graphics card (faster) or the "
-                      "processor (works everywhere)." },
+        { "Renderer", "How the game's picture is drawn on your screen.
+"
+                      "Accelerated (or the first choice): uses your graphics card. Smooth and "
+                      "fast; use this.
+"
+                      "Software: uses only the processor. Try it if the picture stays black, "
+                      "flickers or the game crashes." },
         { "Linear filtering", "Smooth the picture when it is enlarged. Off keeps the pixels "
                               "sharp and blocky, like the original." },
         { "Scaling filter", "How the picture is smoothed when it is enlarged." },
@@ -3936,8 +3941,14 @@ void draw_display_controls(LauncherModel* m, const LauncherTheme& th) {
          * itself to the longest entry and reads fine, but the CLOSED combo is
          * what a player looks at most of the time, so the full label is a
          * hover away rather than lost. */
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
-            ImGui::SetTooltip("%s", ui_text(launcher_model_renderer_label(m)));
+        if (ImGui::IsItemHovered()) {           /* what it is, plus the full choice */
+            char tip[512];
+            snprintf(tip, sizeof(tip), "%s
+
+Now: %s", ui_text(settings_row_tip("Renderer")),
+                     ui_text(launcher_model_renderer_label(m)));
+            wrapped_tooltip(tip);
+        }
         /* The host's own words about what this choice costs and when it takes
          * effect. recomp-ui does not know either -- it cannot: "OpenGL" means
          * a different thing on every console here, and a backend's maturity
