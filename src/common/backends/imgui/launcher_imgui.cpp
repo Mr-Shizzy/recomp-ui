@@ -1839,7 +1839,48 @@ void row_label(const char* text, const LauncherTheme& th, float col_w = 0.0f) {
  * long to leave room keeps a minimum gap and lets its control run wide rather
  * than colliding with the text.
  */
+/* Plain-language tips for the common settings rows, shown when the mouse is
+ * anywhere on the row (label or control). Rows with their own, more specific
+ * tooltip simply are not listed here. */
+static const char* settings_row_tip(const char* label) {
+    static const struct { const char* label; const char* tip; } k[] = {
+        { "Window scale", "How big the game window is: the console's picture enlarged 1x to 6x." },
+        { "Fullscreen", "Off: play in a window.\nBorderless: fill the screen, quick to switch "
+                        "in and out of.\nExclusive: take over the screen completely (can lower lag)." },
+        { "Integer scaling", "Only enlarge by whole steps (2x, 3x...) so every pixel is the "
+                             "same size and stays sharp. Can leave black borders." },
+        { "Renderer", "How the picture is drawn: with the graphics card (faster) or the "
+                      "processor (works everywhere)." },
+        { "Linear filtering", "Smooth the picture when it is enlarged. Off keeps the pixels "
+                              "sharp and blocky, like the original." },
+        { "Scaling filter", "How the picture is smoothed when it is enlarged." },
+        { "Texture filtering", "Smooth 3D textures (bilinear) or keep them sharp (nearest)." },
+        { "Volume", "Overall game volume." },
+        { "Sample rate", "Audio quality. Higher sounds clearer; lower can help a slow computer." },
+        { "Window size", "The size of the game window, in pixels." },
+        { "Screen layout", "How the game's screens are arranged in the window." },
+    };
+    for (const auto& e : k)
+        if (std::strcmp(label, e.label) == 0) return e.tip;
+    return nullptr;
+}
+
+/* A wrapped tooltip (long tips stay readable). */
+static void wrapped_tooltip(const char* tip) {
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(px(380));
+    ImGui::TextUnformatted(tip);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
+
 void row_label_right(const char* text, const LauncherTheme& th, float ctrl_w) {
+    if (const char* tip = settings_row_tip(text)) {
+        const ImVec2 a = ImGui::GetCursorScreenPos();
+        const ImVec2 b(a.x + ImGui::GetContentRegionAvail().x, a.y + ImGui::GetFrameHeight());
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && ImGui::IsMouseHoveringRect(a, b))
+            wrapped_tooltip(ui_text(tip));
+    }
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(col(th.text_muted), "%s", ui_text(text));
     ImGui::SameLine(0.0f, 0.0f);
@@ -2230,7 +2271,11 @@ void draw_game_panel(LauncherModel* m, const LauncherTheme& th, bool fill_h = fa
                  ui_text("Browse For"), ui_text(noun));
     if (m->import_sbi_cb)
         std::strncat(change_label, " / SBI", sizeof(change_label) - std::strlen(change_label) - 1);
-    if (ImGui::Button(change_label, ImVec2(availw, px(34)))) {
+    const bool browse_clicked = ImGui::Button(change_label, ImVec2(availw, px(34)));
+    if (ImGui::IsItemHovered())
+        wrapped_tooltip(ui_text("Pick your own copy of the game (the ROM or disc file). "
+                                "It is checked to be the right version before you play."));
+    if (browse_clicked) {
         // Native file dialog filter comes from the active console's
         // SystemProfile.rom_filter — never a hardcoded per-system set. Every
         // shipped profile supplies one; the fallback is console-NEUTRAL (all
@@ -3356,6 +3401,9 @@ void draw_player_panel(LauncherModel* m, const LauncherTheme& th, int p, float w
         draw_source_selectables(m, p);
         ImGui::EndCombo();
     }
+    if (ImGui::IsItemHovered())
+        wrapped_tooltip(ui_text("What this player plays with: the keyboard, a gamepad, or "
+                                "nothing (None)."));
     ImGui::Dummy(ImVec2(0, px(4)));
     // Configure + connection status share ONE half/half row (Configure left,
     // status right) so the card stays short — that keeps the memory cards below
@@ -3366,6 +3414,8 @@ void draw_player_panel(LauncherModel* m, const LauncherTheme& th, int p, float w
         const float half = (cw - gap) * 0.5f;
         const float btnh = px(32);
         if (ImGui::Button(ui_text("Configure"), ImVec2(half, btnh))) launcher_model_open_config(m, p);
+        if (ImGui::IsItemHovered())
+            wrapped_tooltip(ui_text("Choose which keys or buttons do what for this player."));
         ImGui::SameLine(0, gap);
         const bool on = m->s.player_src[p] != 0;
         const char* st = ui_text(on ? "connected" : "not assigned");
@@ -4669,6 +4719,7 @@ void draw_hotkeys_controls(LauncherModel* m, const LauncherTheme& th) {
             const char* hkname = ui_text(launcher_hotkey_name((LngHotkey)h));
             ImGui::AlignTextToFramePadding();
             ImGui::TextColored(col(th.text_muted), "%s", hkname);
+            if (ImGui::IsItemHovered()) wrapped_tooltip(ui_text(launcher_hotkey_tip((LngHotkey)h)));
             // Pad with RELATIVE spacing (not absolute x) so the bind button
             // starts at a uniform offset within every table cell — absolute
             // SameLine() fights ImGui's per-cell cursor tracking and spills
@@ -4680,6 +4731,8 @@ void draw_hotkeys_controls(LauncherModel* m, const LauncherTheme& th) {
             if (cap) ImGui::PushStyleColor(ImGuiCol_Button, col(th.accent));
             if (ImGui::Button(lbl, ImVec2(px(130), 0)))
                 launcher_model_begin_hk_capture(m, (LngHotkey)h);
+            if (ImGui::IsItemHovered())
+                wrapped_tooltip(ui_text("Click, then press the key to use for this. Esc cancels."));
             if (cap) ImGui::PopStyleColor();
             ImGui::PopID();
         }
@@ -11916,6 +11969,10 @@ void draw_footer(LauncherModel* m, const LauncherTheme& th, float footer_h) {
         ImGui::SetCursorScreenPos(ImVec2(origin.x, cta_y + (play_h - ImGui::GetFrameHeight()) * 0.5f));
         if (ImGui::Checkbox(ui_text("Skip launcher on boot"), &skip))
             launcher_model_request_skip_toggle(m);
+        if (ImGui::IsItemHovered())
+            wrapped_tooltip(ui_text("Next time, start the game straight away without this "
+                                    "window. Run the game with --launcher (or use the game's "
+                                    "own way back, if it has one) to see it again."));
     } else if (m->view == LNG_VIEW_SETTINGS &&
                launcher_model_can_restore_defaults(m)) {
         ImGui::SetCursorScreenPos(

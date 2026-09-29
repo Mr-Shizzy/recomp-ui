@@ -4297,6 +4297,35 @@ const char* launcher_hotkey_name(LngHotkey h) {
     return kHotkeyNames[h];
 }
 
+/* What each hotkey does, in plain words (the Hotkeys card's tooltips). */
+static const char* kHotkeyTips[] = {
+    "Switch between a window and full screen.",
+    "Restart the game, like the console's Reset button.",
+    "Pause or unpause the game.",
+    "Pause the game and darken the picture.",
+    "Hold to run the game faster.",
+    "Make the window bigger.",
+    "Make the window smaller.",
+    "Turn the volume up.",
+    "Turn the volume down.",
+    "Show or hide the frames-per-second counter.",
+    "Switch between the ways the picture is drawn.",
+    "Raise the light level for the cartridge's solar sensor.",
+    "Lower the light level for the cartridge's solar sensor.",
+    "Go back to using the real light level for the solar sensor.",
+    "Hold to go back in time.",
+    "Save your exact spot in the game, or load one you saved.",
+    "Go back to this launcher.",
+    "Press to turn fast-forward on or off.",
+};
+typedef char kHotkeyTips_covers_every_hotkey[
+    (sizeof(kHotkeyTips) / sizeof(kHotkeyTips[0]) == LNG_HK_COUNT) ? 1 : -1];
+
+const char* launcher_hotkey_tip(LngHotkey h) {
+    if (h < 0 || h >= LNG_HK_COUNT) return "";
+    return kHotkeyTips[h];
+}
+
 const char* launcher_view_name(LngView v) {
     if (v < 0 || v > LNG_VIEW_LOBBY) return "?";
     return kViewNames[v];

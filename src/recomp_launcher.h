@@ -1053,7 +1053,7 @@ typedef enum RecompLauncherCHostRowType {
 
 typedef struct RecompLauncherCHostRow {
     int  type;                /* RecompLauncherCHostRowType */
-    char label[160];
+    char label[512];         /* HEADER title, row label, or TEXT body */
     char help[256];           /* tooltip; "" = none */
     int  value;
     int  min_value, max_value, step;

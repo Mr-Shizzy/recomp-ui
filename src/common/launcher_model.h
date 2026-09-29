@@ -1143,6 +1143,8 @@ const char* launcher_model_freq_label(const LauncherModel* m);         // "44100
 const char* launcher_model_player_src_label(const LauncherModel* m, int player);
 const char* launcher_button_name(LngButton b);
 const char* launcher_hotkey_name(LngHotkey h);
+/* One plain-language line on what hotkey h does (tooltips). */
+const char* launcher_hotkey_tip(LngHotkey h);
 const char* launcher_view_name(LngView v);
 
 #ifdef __cplusplus
