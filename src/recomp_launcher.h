@@ -1064,6 +1064,9 @@ typedef struct RecompLauncherCHostRow {
     /* HEADER rows of an in_settings page: "display" or "audio" appends the
      * section's rows to that built-in Settings card instead of a new card. */
     char merge[32];
+    /* TEXT rows: non-zero draws the text in the section-title color, a
+     * little darker (a note that belongs to the card, e.g. a warning). */
+    int  accent;
 } RecompLauncherCHostRow;
 
 typedef struct RecompLauncherCHostPage {

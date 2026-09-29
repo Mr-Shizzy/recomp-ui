@@ -11745,11 +11745,17 @@ static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
         if (ImGui::Button(r.label, ImVec2(ImGui::GetContentRegionAvail().x, 0)))
             pg->row_set(pg->ctx, i, 1, rom);
         break;
-    case RECOMP_HOST_ROW_TEXT:
-        ImGui::PushStyleColor(ImGuiCol_Text, col(th.text_muted));
+    case RECOMP_HOST_ROW_TEXT: {
+        ImVec4 tc = col(th.text_muted);
+        if (r.accent) {                         /* heading color, a shade darker */
+            tc = col(th.accent2);
+            tc.x *= 0.78f; tc.y *= 0.78f; tc.z *= 0.78f;
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, tc);
         ImGui::TextWrapped("%s", r.label);
         ImGui::PopStyleColor();
         break;
+    }
     case RECOMP_HOST_ROW_IMAGE: {
         const LauncherTexture& t = host_image(id, r.image_path, r.value);
         const float avail = ImGui::GetContentRegionAvail().x;
