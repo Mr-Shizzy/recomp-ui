@@ -32,7 +32,7 @@ static const SDL_Scancode kNesDefaultsP2[LNG_NES_PAD_BUTTON_COUNT] = {
     /* Up */ SDL_SCANCODE_W, /* Down */ SDL_SCANCODE_S,
     /* Left */ SDL_SCANCODE_A, /* Right */ SDL_SCANCODE_D,
     /* A */ SDL_SCANCODE_K, /* B */ SDL_SCANCODE_L,
-    /* Start */ SDL_SCANCODE_BACKSLASH, /* Select */ SDL_SCANCODE_RSHIFT,
+    /* Start */ SDL_SCANCODE_RCTRL, /* Select */ SDL_SCANCODE_RSHIFT,
 };
 
 static const char* kNesCameraKeyName[LNG_CAMERA_BIND_COUNT] = {
