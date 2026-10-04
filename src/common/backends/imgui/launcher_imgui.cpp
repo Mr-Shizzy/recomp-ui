@@ -11986,6 +11986,37 @@ void draw_footer(LauncherModel* m, const LauncherTheme& th, float footer_h) {
             wrapped_tooltip(ui_text("Next time, start the game straight away without this "
                                     "window. Run the game with --launcher (or use the game's "
                                     "own way back, if it has one) to see it again."));
+        /* on_dashboard host pages: their rows continue the line. */
+        const char* rom = launcher_model_effective_rom_path(m);
+        if (!rom) rom = "";
+        for (int p = 0; p < m->host_page_count; ++p) {
+            const RecompLauncherCHostPage* pg = m->host_pages[p];
+            if (!pg || !pg->on_dashboard) continue;
+            const std::vector<RecompLauncherCHostRow> rows = host_rows(pg);
+            for (int i = 0; i < (int)rows.size(); ++i) {
+                const RecompLauncherCHostRow& r = rows[(size_t)i];
+                if (r.type != RECOMP_HOST_ROW_TOGGLE && r.type != RECOMP_HOST_ROW_BUTTON &&
+                    r.type != RECOMP_HOST_ROW_TEXT) continue;
+                ImGui::SameLine(0, px(24.0f));
+                ImGui::PushID(p * 1000 + i);
+                if (r.disabled) ImGui::BeginDisabled();
+                if (r.type == RECOMP_HOST_ROW_TOGGLE) {
+                    bool v = r.value != 0;
+                    if (ImGui::Checkbox(r.label, &v)) pg->row_set(pg->ctx, i, v ? 1 : 0, rom);
+                } else if (r.type == RECOMP_HOST_ROW_BUTTON) {
+                    if (ImGui::Button(r.label)) pg->row_set(pg->ctx, i, 1, rom);
+                } else {
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::PushStyleColor(ImGuiCol_Text, col(th.text_muted));
+                    ImGui::TextUnformatted(r.label);
+                    ImGui::PopStyleColor();
+                }
+                if (r.disabled) ImGui::EndDisabled();
+                if (r.help[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    wrapped_tooltip(r.help);
+                ImGui::PopID();
+            }
+        }
     } else if (m->view == LNG_VIEW_SETTINGS &&
                launcher_model_can_restore_defaults(m)) {
         ImGui::SetCursorScreenPos(
@@ -13515,7 +13546,8 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
         if (m->view == LNG_VIEW_DASHBOARD) {
             int nav_pages = 0;
             for (int hp_i = 0; hp_i < m->host_page_count; ++hp_i)
-                nav_pages += m->host_pages[hp_i] && !m->host_pages[hp_i]->in_settings;
+                nav_pages += m->host_pages[hp_i] && !m->host_pages[hp_i]->in_settings &&
+                             !m->host_pages[hp_i]->on_dashboard;
             const int count = 1 + (m->mods ? 1 : 0) + nav_pages +
                               (m->has_assist_tools ? 1 : 0) +
                               ((m->credits_text && m->credits_text[0]) ? 1 : 0);
@@ -13526,7 +13558,7 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
                 launcher_model_set_view(m, LNG_VIEW_SETTINGS);
             for (int hp_i = 0; hp_i < m->host_page_count; ++hp_i) {
                 const RecompLauncherCHostPage* hp_pg = m->host_pages[hp_i];
-                if (!hp_pg || hp_pg->in_settings) continue;   /* shown inside Settings */
+                if (!hp_pg || hp_pg->in_settings || hp_pg->on_dashboard) continue;   /* shown elsewhere */
                 ImGui::SameLine(0, gap);
                 ImGui::PushID(hp_i);
                 if (ImGui::Button(hp_pg && hp_pg->title ? hp_pg->title : "Game",
@@ -13629,6 +13661,7 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
         case LNG_VIEW_CREDITS:      draw_credits(m, th);             break;
         case LNG_VIEW_HOST_PAGE:    draw_host_page(m, th);           break;
         case LNG_VIEW_LOBBY:        draw_lobby(m, th);               break;
+        case LNG_VIEW__COUNT:       break;   /* not a view */
     }
     end_container();
 
