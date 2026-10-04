@@ -13415,6 +13415,15 @@ void draw_skip_modal(LauncherModel* m) {
         ImGui::TextWrapped("The launcher will no longer appear - the game boots straight in. "
                            "Run with \"--launcher\" or set \"SkipLauncher = 0\" in config.ini "
                            "to bring it back.");
+        /* A game with main-page rows (e.g. an update check) loses them too. */
+        bool dash_rows = false;
+        for (int p = 0; p < m->host_page_count; ++p)
+            dash_rows |= m->host_pages[p] && m->host_pages[p]->on_dashboard;
+        if (dash_rows) {
+            ImGui::Spacing();
+            ImGui::TextWrapped("Note: you also won't be told about updates, because the "
+                               "update check only runs when the launcher opens.");
+        }
         ImGui::Spacing();
         if (ImGui::Button("Cancel", ImVec2(px(120), 0))) {
             launcher_model_skip_cancel(m); ImGui::CloseCurrentPopup();
