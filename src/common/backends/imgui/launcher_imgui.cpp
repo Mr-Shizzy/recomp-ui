@@ -11955,6 +11955,70 @@ const LauncherPanel kPanelRegistry[] = {
     { nullptr,              LNG_VIEW_DASHBOARD,  0,             nullptr,      nullptr },   // sentinel
 };
 
+/* Dashboard footer, left of the buttons on the right: "Skip launcher on boot"
+ * then the on_dashboard host rows, flowed left to right and wrapped onto more
+ * lines when the window is too narrow (they must never slide under PLAY).
+ * Laid out once per frame before the body, because the footer grows with the
+ * line count. */
+struct FooterItem {
+    const RecompLauncherCHostPage* pg;
+    int page, index;
+    RecompLauncherCHostRow row;
+    float x;                    /* from the footer's left edge */
+    int line;
+};
+static std::vector<FooterItem> s_footer_items;
+static int s_footer_lines = 1;
+
+static float footer_right_reserved(const LauncherModel* m) {
+    float r = px(210.0f) + px(24.0f);                   /* PLAY + gap */
+    if (m->in_session || m->netplay_supported)          /* QUIT GAME / NETPLAY */
+        r += px(170.0f) + px(12.0f);
+    return r;
+}
+
+static float footer_item_w(int type, const char* label) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float tw = ImGui::CalcTextSize(label, nullptr, true).x;
+    if (type == RECOMP_HOST_ROW_TOGGLE) return ImGui::GetFrameHeight() + st.ItemInnerSpacing.x + tw;
+    if (type == RECOMP_HOST_ROW_BUTTON) return tw + st.FramePadding.x * 2.0f;
+    return tw;
+}
+
+static void layout_dashboard_footer(LauncherModel* m, float fullw) {
+    s_footer_items.clear();
+    s_footer_lines = 1;
+    if (m->view != LNG_VIEW_DASHBOARD) return;
+    const float avail = fullw - footer_right_reserved(m);
+    const float gap = px(24.0f);
+    float x = footer_item_w(RECOMP_HOST_ROW_TOGGLE, ui_text("Skip launcher on boot"));
+    int line = 0;
+    for (int p = 0; p < m->host_page_count; ++p) {
+        const RecompLauncherCHostPage* pg = m->host_pages[p];
+        if (!pg || !pg->on_dashboard) continue;
+        const std::vector<RecompLauncherCHostRow> rows = host_rows(pg);
+        for (int i = 0; i < (int)rows.size(); ++i) {
+            const RecompLauncherCHostRow& r = rows[(size_t)i];
+            if (r.type != RECOMP_HOST_ROW_TOGGLE && r.type != RECOMP_HOST_ROW_BUTTON &&
+                r.type != RECOMP_HOST_ROW_TEXT) continue;
+            const float w = footer_item_w(r.type, r.label);
+            if (x > 0.0f && x + gap + w > avail) { ++line; x = 0.0f; }
+            else if (x > 0.0f) x += gap;
+            s_footer_items.push_back({ pg, p, i, r, x, line });
+            x += w;
+        }
+    }
+    s_footer_lines = line + 1;
+}
+
+static float footer_height(void) {
+    const float base = px(92.0f);   // divider + clearance + CTA + its glow
+    if (s_footer_lines <= 1) return base;
+    const float h = s_footer_lines * ImGui::GetFrameHeight() +
+                    (s_footer_lines - 1) * px(8.0f) + px(28.0f);
+    return h > base ? h : base;
+}
+
 // Footer: a fixed-height band with the neon divider pinned to its TOP and the
 // CTA vertically centred inside it. Laid out from an explicit origin (not the
 // running cursor) so it is pixel-identical on every view and the CTA's glow
@@ -11978,44 +12042,42 @@ void draw_footer(LauncherModel* m, const LauncherTheme& th, float footer_h) {
 
     const ImVec2 win = ImGui::GetWindowPos();
     if (m->view == LNG_VIEW_DASHBOARD) {
+        /* Skip, then the on_dashboard host rows (layout_dashboard_footer),
+         * the block centred in the band. */
+        const float fh = ImGui::GetFrameHeight();
+        const float line_h = fh + px(8.0f);
+        const float block_h = s_footer_lines * fh + (s_footer_lines - 1) * px(8.0f);
+        const float y0 = band_y + (band_h - block_h) * 0.5f;
         bool skip = m->s.skip_launcher != 0;
-        ImGui::SetCursorScreenPos(ImVec2(origin.x, cta_y + (play_h - ImGui::GetFrameHeight()) * 0.5f));
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, y0));
         if (ImGui::Checkbox(ui_text("Skip launcher on boot"), &skip))
             launcher_model_request_skip_toggle(m);
         if (ImGui::IsItemHovered())
             wrapped_tooltip(ui_text("Next time, start the game straight away without this "
                                     "window. Run the game with --launcher (or use the game's "
                                     "own way back, if it has one) to see it again."));
-        /* on_dashboard host pages: their rows continue the line. */
         const char* rom = launcher_model_effective_rom_path(m);
         if (!rom) rom = "";
-        for (int p = 0; p < m->host_page_count; ++p) {
-            const RecompLauncherCHostPage* pg = m->host_pages[p];
-            if (!pg || !pg->on_dashboard) continue;
-            const std::vector<RecompLauncherCHostRow> rows = host_rows(pg);
-            for (int i = 0; i < (int)rows.size(); ++i) {
-                const RecompLauncherCHostRow& r = rows[(size_t)i];
-                if (r.type != RECOMP_HOST_ROW_TOGGLE && r.type != RECOMP_HOST_ROW_BUTTON &&
-                    r.type != RECOMP_HOST_ROW_TEXT) continue;
-                ImGui::SameLine(0, px(24.0f));
-                ImGui::PushID(p * 1000 + i);
-                if (r.disabled) ImGui::BeginDisabled();
-                if (r.type == RECOMP_HOST_ROW_TOGGLE) {
-                    bool v = r.value != 0;
-                    if (ImGui::Checkbox(r.label, &v)) pg->row_set(pg->ctx, i, v ? 1 : 0, rom);
-                } else if (r.type == RECOMP_HOST_ROW_BUTTON) {
-                    if (ImGui::Button(r.label)) pg->row_set(pg->ctx, i, 1, rom);
-                } else {
-                    ImGui::AlignTextToFramePadding();
-                    ImGui::PushStyleColor(ImGuiCol_Text, col(th.text_muted));
-                    ImGui::TextUnformatted(r.label);
-                    ImGui::PopStyleColor();
-                }
-                if (r.disabled) ImGui::EndDisabled();
-                if (r.help[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                    wrapped_tooltip(r.help);
-                ImGui::PopID();
+        for (const FooterItem& it : s_footer_items) {
+            const RecompLauncherCHostRow& r = it.row;
+            ImGui::SetCursorScreenPos(ImVec2(origin.x + it.x, y0 + it.line * line_h));
+            ImGui::PushID(it.page * 1000 + it.index);
+            if (r.disabled) ImGui::BeginDisabled();
+            if (r.type == RECOMP_HOST_ROW_TOGGLE) {
+                bool v = r.value != 0;
+                if (ImGui::Checkbox(r.label, &v)) it.pg->row_set(it.pg->ctx, it.index, v ? 1 : 0, rom);
+            } else if (r.type == RECOMP_HOST_ROW_BUTTON) {
+                if (ImGui::Button(r.label)) it.pg->row_set(it.pg->ctx, it.index, 1, rom);
+            } else {
+                ImGui::AlignTextToFramePadding();
+                ImGui::PushStyleColor(ImGuiCol_Text, col(th.text_muted));
+                ImGui::TextUnformatted(r.label);
+                ImGui::PopStyleColor();
             }
+            if (r.disabled) ImGui::EndDisabled();
+            if (r.help[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                wrapped_tooltip(r.help);
+            ImGui::PopID();
         }
     } else if (m->view == LNG_VIEW_SETTINGS &&
                launcher_model_can_restore_defaults(m)) {
@@ -13654,7 +13716,8 @@ void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logic
 
     // Body: fixed-height child that scrolls when content overflows, so nothing
     // is ever clipped out of reach. The footer below stays fixed (in the fold).
-    const float footer_h = px(92.0f);   // divider + clearance + CTA + its glow
+    layout_dashboard_footer(m, ImGui::GetContentRegionAvail().x);
+    const float footer_h = footer_height();   // grows when the dashboard row wraps
     float body_h = ImGui::GetContentRegionAvail().y - footer_h;
     if (body_h < px(80.0f)) body_h = px(80.0f);
     begin_container("body", ImVec2(0, body_h));
