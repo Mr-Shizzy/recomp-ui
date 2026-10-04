@@ -1084,7 +1084,13 @@ typedef struct RecompLauncherCHostPage {
     /* Non-zero: no page of its own; the rows join the Settings page (the
      * game's options next to the launcher's, one place for everything). */
     int in_settings;
+    /* Non-zero: no page of its own; TOGGLE, BUTTON and TEXT rows sit in the
+     * dashboard footer, after "Skip launcher on boot" (e.g. an update check).
+     * Rows are read every dashboard frame, so row_count/row_get may also poll
+     * background work. Appended for ABI stability. */
+    int on_dashboard;
 } RecompLauncherCHostPage;
+#define RECOMP_LAUNCHER_HAS_DASHBOARD_ROWS 1
 
 // Plain-C mirror of the launcher's internal settings (bools as int).
 struct RecompLauncherCSettings {
