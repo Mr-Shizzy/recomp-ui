@@ -417,6 +417,15 @@ void launcher_platform_refresh_metrics(LauncherPlatform* p) {
             float dpi_scale = hdpi / 96.0f;
             if (dpi_scale > s) s = dpi_scale;
         }
+        // A big screen left at 100% scaling (1440p, 4K) would show the
+        // 1100x880 layout small: grow with the screen too, to about 3/4 of
+        // its height (at most 2x). 1080p screens are unaffected.
+        SDL_Rect usable;
+        if (window_usable_bounds(p->window, &usable)) {
+            float screen_scale = (float)usable.h * 0.75f / 880.0f;
+            if (screen_scale > 2.0f) screen_scale = 2.0f;
+            if (screen_scale > s) s = screen_scale;
+        }
 #endif
     }
     if (s <= 0.0f) s = 1.0f;
