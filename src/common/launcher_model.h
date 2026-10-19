@@ -185,6 +185,7 @@ typedef struct {
     bool        in_session;          // opened from a running game (RESUME, not PLAY)
     bool        has_open_launcher_hotkey; // [KeyMap] OpenLauncher row in Hotkeys
     bool        has_integer_scale;   // Integer-scale checkbox in Display settings
+    bool        simple_display;      // Display card: Full screen, aspect, renderer only
     bool        hdpack_supported;    // HD-texture-pack toggle + folder picker
     // Password/mantra save (e.g. Faxanadu): non-NULL path swaps the SAVES row
     // for a password-text UI (read + edit-with-confirm of a 1-line file).

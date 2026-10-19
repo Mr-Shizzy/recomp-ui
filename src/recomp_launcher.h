@@ -2091,6 +2091,10 @@ typedef struct RecompLauncherCGameInfo {
      * stability; zero leaves the launcher exactly as before. */
     const RecompLauncherCHostPage* const* host_pages;
     int host_page_count;
+    /* Simple display card: only Full screen (Off/On), the aspect row and the
+     * renderer. The game picks the rest itself (window size, scaling, filter,
+     * fullscreen kind). Appended for ABI stability; 0 = the usual card. */
+    int simple_display;
 } RecompLauncherCGameInfo;
 #define RECOMP_LAUNCHER_HAS_NETPLAY_VIEW 1
 #define RECOMP_LAUNCHER_HAS_SNES_DISPLAY_ASPECT 1

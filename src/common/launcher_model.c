@@ -368,6 +368,7 @@ void launcher_model_init(LauncherModel* m,
     m->in_session           = game->in_session != 0;
     m->has_open_launcher_hotkey = game->has_open_launcher_hotkey != 0;
         m->has_integer_scale    = game->has_integer_scale != 0;
+        m->simple_display       = game->simple_display != 0;
         m->hdpack_supported     = game->hdpack_supported != 0;
         m->password_save_path   = game->password_save_path;
         m->password_save_label  = game->password_save_label;

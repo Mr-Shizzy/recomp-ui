@@ -1845,6 +1845,7 @@ void row_label(const char* text, const LauncherTheme& th, float col_w = 0.0f) {
 static const char* settings_row_tip(const char* label) {
     static const struct { const char* label; const char* tip; } k[] = {
         { "Window scale", "How big the game window is: the console's picture enlarged 1x to 6x." },
+        { "Full screen", "On: the game fills your screen.\nOff: it plays in a window you can resize." },
         { "Fullscreen", "Off: play in a window.\nBorderless: fill the screen, quick to switch "
                         "in and out of.\nExclusive: take over the screen completely (can lower lag)." },
         { "Integer scaling", "Only enlarge by whole steps (2x, 3x...) so every pixel is the "
@@ -1952,6 +1953,9 @@ int settings_combo_row(const char* label, const LauncherTheme& th,
  * frame so the list is plain data, like every other choice list here. */
 static const SettingsChoice kScaleChoices[LNG_WINDOW_SCALE_MAX] = {
     {1, "1x"}, {2, "2x"}, {3, "3x"}, {4, "4x"}, {5, "5x"}, {6, "6x"}
+};
+static const SettingsChoice kFullscreenSimpleChoices[] = {
+    {0, "Off"}, {1, "On"}
 };
 static const SettingsChoice kFullscreenChoices[] = {
     {0, "Off"}, {1, "Borderless"}, {2, "Exclusive"}
@@ -3787,6 +3791,32 @@ void draw_shader_row(LauncherModel* m, const LauncherTheme& th, float col_w = 0.
 
 void draw_display_controls(LauncherModel* m, const LauncherTheme& th) {
     eyebrow("DISPLAY");
+
+    if (m->simple_display) {
+        // ---- simple card (GameInfo.simple_display): the game sizes, scales
+        // and filters the picture itself; the player only chooses window or
+        // full screen, the picture's shape, and the renderer. ----------------
+        launcher_model_set_fullscreen(
+            m, settings_combo_row("Full screen", th, "##fullscreen_simple",
+                                  kFullscreenSimpleChoices, 2, m->s.fullscreen ? 1 : 0));
+        draw_aspect_row(m, th);
+        if (launcher_model_renderer_offered(m)) {
+            row_label_right("Renderer", th, px(SETTINGS_CTRL_W));
+            ImGui::SetNextItemWidth(px(SETTINGS_CTRL_W));
+            if (ImGui::BeginCombo("##renderer_simple",
+                                  ui_text(launcher_model_renderer_label(m)))) {
+                const int n = launcher_model_renderer_count(m);
+                for (int i = 0; i < n; ++i) {
+                    const char* lbl = launcher_model_renderer_label_at(m, i);
+                    if (!lbl || !lbl[0]) continue;
+                    if (ImGui::Selectable(ui_text(lbl), m->s.renderer == i))
+                        launcher_model_set_renderer(m, i);
+                }
+                ImGui::EndCombo();
+            }
+        }
+        return;
+    }
 
     if (!any_deep_display(m)) {
         // ---- legacy minimal surface (SNES/NES etc.) ---------------------------
