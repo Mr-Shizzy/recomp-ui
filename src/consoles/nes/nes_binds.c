@@ -307,3 +307,94 @@ void rui_nes_camera_bind_reset(const char* path) {
             path, "camera", kNesCameraKeyName[i],
             nes_kb_scancode_to_name(s_nes_camera_binds[i]));
 }
+
+/* ---- gamepad bindings ([gamepad<N>]) ---------------------------------------
+ * The runner's own format: per NES button, a comma list of SDL game-controller
+ * button names ("a,b"), read fresh from the file each time (the game edits
+ * it too). The runner binds buttons only -- no stick or trigger axes. */
+static const char* kNesPadDefaults[LNG_NES_PAD_BUTTON_COUNT] = {
+    "dpup", "dpdown", "dpleft", "dpright", "a,b", "x,y", "start", "back",
+};
+
+void rui_nes_pad_get(const char* path, int player, int b, char* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    if (player < 0 || player > 3 || b < 0 || b >= LNG_NES_PAD_BUTTON_COUNT) return;
+    snprintf(out, (size_t)cap, "%s", kNesPadDefaults[b]);
+    FILE* f = path ? fopen(path, "r") : NULL;
+    if (!f) return;
+    char want[16], line[256];
+    snprintf(want, sizeof(want), "[gamepad%d]", player + 1);
+    int in = 0;
+    while (fgets(line, sizeof(line), f)) {
+        char* s = line;
+        while (*s == ' ' || *s == '\t') s++;
+        size_t n = strlen(s);
+        while (n && (s[n - 1] == '\n' || s[n - 1] == '\r' || s[n - 1] == ' ')) s[--n] = '\0';
+        if (*s == '[') { in = !strcmp(s, want); continue; }
+        if (!in || *s == '#' || *s == ';') continue;
+        char* eq = strchr(s, '=');
+        if (!eq) continue;
+        char* k = s; char* ke = eq;
+        while (ke > k && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
+        if ((size_t)(ke - k) != strlen(kNesKbKeyName[b]) || strncmp(k, kNesKbKeyName[b], (size_t)(ke - k))) continue;
+        char* v = eq + 1;
+        while (*v == ' ' || *v == '\t') v++;
+        snprintf(out, (size_t)cap, "%s", v);
+        break;
+    }
+    fclose(f);
+}
+
+void rui_nes_pad_set(const char* path, int player, int b, const char* names) {
+    if (player < 0 || player > 3 || b < 0 || b >= LNG_NES_PAD_BUTTON_COUNT) return;
+    char section[16];
+    snprintf(section, sizeof(section), "gamepad%d", player + 1);
+    launcher_ini_kv_write(path, section, kNesKbKeyName[b], names && names[0] ? names : "none");
+}
+
+void rui_nes_pad_reset(const char* path, int player) {
+    for (int b = 0; b < LNG_NES_PAD_BUTTON_COUNT; ++b)
+        rui_nes_pad_set(path, player, b, kNesPadDefaults[b]);
+}
+
+/* "a,b" -> "A / B": the names a player reads (Xbox layout). */
+void rui_nes_pad_label(const char* names, char* out, int cap) {
+    static const struct { const char* sdl; const char* show; } k[] = {
+        { "a", "A" }, { "b", "B" }, { "x", "X" }, { "y", "Y" }, { "back", "Back" },
+        { "guide", "Guide" }, { "start", "Start" }, { "leftstick", "LS" },
+        { "rightstick", "RS" }, { "leftshoulder", "LB" }, { "rightshoulder", "RB" },
+        { "dpup", "D-pad Up" }, { "dpdown", "D-pad Down" }, { "dpleft", "D-pad Left" },
+        { "dpright", "D-pad Right" },
+    };
+    if (!out || cap <= 0) return;
+    out[0] = '\0';
+    size_t used = 0;
+    char tok[32];
+    const char* p = names ? names : "";
+    while (*p) {
+        while (*p == ',' || *p == ' ') p++;
+        size_t n = 0;
+        while (p[n] && p[n] != ',' && p[n] != ' ' && n < sizeof(tok) - 1) { tok[n] = (char)tolower((unsigned char)p[n]); n++; }
+        tok[n] = '\0';
+        p += n;
+        if (!n || !strcmp(tok, "none")) continue;
+        const char* show = tok;
+        for (size_t i = 0; i < sizeof(k) / sizeof(k[0]); ++i)
+            if (!strcmp(tok, k[i].sdl)) { show = k[i].show; break; }
+        int w = snprintf(out + used, (size_t)cap - used, "%s%s", used ? " / " : "", show);
+        if (w < 0 || (size_t)w >= (size_t)cap - used) break;
+        used += (size_t)w;
+    }
+    if (!used) snprintf(out, (size_t)cap, "(unbound)");
+}
+
+/* An SDL game-controller button number -> the runner's name (SDL2 and SDL3
+ * number the standard buttons the same way); NULL for others. */
+const char* rui_nes_pad_button_name(int button) {
+    static const char* const k[] = {
+        "a", "b", "x", "y", "back", "guide", "start", "leftstick", "rightstick",
+        "leftshoulder", "rightshoulder", "dpup", "dpdown", "dpleft", "dpright",
+    };
+    return button >= 0 && button < (int)(sizeof(k) / sizeof(k[0])) ? k[button] : NULL;
+}

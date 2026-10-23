@@ -57,6 +57,15 @@ int  rui_nes_camera_bind_get(const char* path, int action);
 void rui_nes_camera_bind_set(const char* path, int action, int scancode);
 void rui_nes_camera_bind_reset(const char* path);
 
+/* Gamepad bindings ([gamepad<N>], the runner's format: a comma list of SDL
+ * game-controller button names per NES button, e.g. "a,b"). player 0-based,
+ * b in kNesPadButtons order. _get falls back to the runner's default. */
+void rui_nes_pad_get(const char* path, int player, int b, char* out, int cap);
+void rui_nes_pad_set(const char* path, int player, int b, const char* names);
+void rui_nes_pad_reset(const char* path, int player);
+void rui_nes_pad_label(const char* names, char* out, int cap);   /* "a,b" -> "A / B" */
+const char* rui_nes_pad_button_name(int sdl_button);             /* NULL: not bindable */
+
 #ifdef __cplusplus
 }
 #endif

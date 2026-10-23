@@ -1041,6 +1041,16 @@ typedef struct RecompLauncherCModProvider {
  * count in response to any row_set. */
 #define RECOMP_LAUNCHER_HAS_HOST_PAGES 1
 
+/* From a host page's row_set (a BUTTON press): open the launcher's key and
+ * button setup for `player` (0 = player 1). */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void recomp_launcher_host_open_config(int player);
+#ifdef __cplusplus
+}
+#endif
+
 typedef enum RecompLauncherCHostRowType {
     RECOMP_HOST_ROW_HEADER = 0,   /* card title; label only */
     RECOMP_HOST_ROW_TOGGLE = 1,   /* checkbox; value 0/1 */

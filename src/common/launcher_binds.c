@@ -290,10 +290,15 @@ static void reload_player_display(LauncherModel* m, int player) {
         return;
     }
     if (is_nes_profile(m)) {
-        for (int b = 0; b < LNG_NES_PAD_BUTTON_COUNT; ++b)
+        for (int b = 0; b < LNG_NES_PAD_BUTTON_COUNT; ++b) {
             copy_str(m->binds[player - 1][b], sizeof(m->binds[player - 1][b]),
                      scancode_label((SDL_Scancode)rui_nes_binds_get(
                          keybinds_file_path(), player - 1, b)));
+            char names[128];
+            rui_nes_pad_get(keybinds_file_path(), player - 1, b, names, (int)sizeof(names));
+            rui_nes_pad_label(names, m->pad_binds[player - 1][b],
+                              (int)sizeof(m->pad_binds[player - 1][b]));
+        }
         return;
     }
     if (is_genesis_profile(m)) {
@@ -1028,6 +1033,17 @@ void launcher_binds_set_field(LauncherModel* m, int player, int b, int slot,
 void launcher_binds_set_pad_button(LauncherModel* m, int player, int b,
                                    int kind, int code, int axis_dir) {
     if (player < 1 || player > LNG_MAX_PLAYERS) return;
+    if (is_nes_profile(m)) {
+        /* The runner binds pad BUTTONS ([gamepad<N>] in keybinds.ini); a stick
+         * or trigger can't be bound, so it leaves the bind as it was. */
+        if (b < 0 || b >= LNG_NES_PAD_BUTTON_COUNT) return;
+        const char* name = kind == LNG_PADBIND_BUTTON ? rui_nes_pad_button_name(code) : NULL;
+        if (kind != LNG_PADBIND_NONE && !name) return;
+        (void)axis_dir;
+        rui_nes_pad_set(keybinds_file_path(), player - 1, b, name ? name : "none");
+        reload_player_display(m, player);
+        return;
+    }
     if (is_psx_profile(m)) {
         if (b < 0 || b >= LNG_PSX_PAD_BUTTON_COUNT) return;
         const char* guid = psx_player_guid(m, player);
@@ -1462,7 +1478,10 @@ void launcher_binds_reset_player(LauncherModel* m, int player) {
     }
     if (is_nes_profile(m)) {
         if (player < 1 || player > LNG_MAX_PLAYERS) return;
-        rui_nes_binds_reset(keybinds_file_path(), player - 1);
+        /* The half the page shows: the pad's buttons for a player on a
+         * gamepad, else the keys. */
+        if (m->s.player_src[player - 1] == 2) rui_nes_pad_reset(keybinds_file_path(), player - 1);
+        else rui_nes_binds_reset(keybinds_file_path(), player - 1);
         reload_player_display(m, player);
         return;
     }

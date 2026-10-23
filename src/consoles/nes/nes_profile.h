@@ -64,6 +64,8 @@ static const SystemProfile kSystemProfileNes = {
         kNesPadButtons, LNG_NES_PAD_BUTTON_COUNT,
         "pad_nes.tga", NULL, NULL,     // shipped NES pad art; no analog/digital pair
         /* max_players */ 4, /* has_pad_mode */ 0,
+        /* binds_per_input */ 1, /* modes */ NULL, /* mode_count */ 0,
+        /* has_pad_binds */ 1,             // [gamepad<N>] in keybinds.ini (nes_binds.c)
     },
     // Battery SRAM, one slot, folded into the GAME card like SNES. Shown only
     // for games that pass sram_path (battery-backed titles, e.g. Zelda/Kirby);

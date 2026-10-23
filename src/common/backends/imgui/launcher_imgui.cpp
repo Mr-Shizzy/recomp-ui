@@ -1955,7 +1955,7 @@ static const SettingsChoice kScaleChoices[LNG_WINDOW_SCALE_MAX] = {
     {1, "1x"}, {2, "2x"}, {3, "3x"}, {4, "4x"}, {5, "5x"}, {6, "6x"}
 };
 static const SettingsChoice kFullscreenSimpleChoices[] = {
-    {0, "Off"}, {1, "On"}
+    {0, "Windowed"}, {1, "Full screen"}
 };
 static const SettingsChoice kFullscreenChoices[] = {
     {0, "Off"}, {1, "Borderless"}, {2, "Exclusive"}
@@ -3797,7 +3797,7 @@ void draw_display_controls(LauncherModel* m, const LauncherTheme& th) {
         // and filters the picture itself; the player only chooses window or
         // full screen, the picture's shape, and the renderer. ----------------
         launcher_model_set_fullscreen(
-            m, settings_combo_row("Full screen", th, "##fullscreen_simple",
+            m, settings_combo_row("Display mode", th, "##fullscreen_simple",
                                   kFullscreenSimpleChoices, 2, m->s.fullscreen ? 1 : 0));
         draw_aspect_row(m, th);
         if (launcher_model_renderer_offered(m)) {
@@ -6366,7 +6366,7 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
                                    pad_src ? " on the controller" : "");
             }
         } else if (m->capturing) {
-            ImGui::TextColored(col(th.warn), "Listening... (Esc cancels, Backspace unbinds)");
+            ImGui::TextColored(col(th.warn), "Listening... (Esc, a click or a pad button cancels; Backspace unbinds)");
         }
         } // !is_psx
     } end_panel();
@@ -11697,6 +11697,11 @@ static const RecompLauncherCHostPage* host_page(const LauncherModel* m) {
     return m->host_pages[m->host_page_sel];
 }
 
+/* recomp_launcher_host_open_config: 1 + the player whose key and button
+ * setup a host page's button asked to open (0 = none). */
+static int g_host_open_config;
+extern "C" void recomp_launcher_host_open_config(int player) { g_host_open_config = player + 1; }
+
 /* One cached texture per IMAGE row path + version. */
 struct HostImage { std::string path; int version = -1; LauncherTexture tex{}; };
 static std::unordered_map<std::string, HostImage> g_host_images;
@@ -11779,8 +11784,13 @@ static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
         break;
     }
     case RECOMP_HOST_ROW_BUTTON:
-        if (ImGui::Button(r.label, ImVec2(ImGui::GetContentRegionAvail().x, 0)))
+        if (ImGui::Button(r.label, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
             pg->row_set(pg->ctx, i, 1, rom);
+            if (g_host_open_config > 0) {           /* the page asked for a player's keys */
+                launcher_model_open_config(m, g_host_open_config - 1);
+                g_host_open_config = 0;
+            }
+        }
         break;
     case RECOMP_HOST_ROW_TEXT: {
         ImVec4 tc = col(th.text_muted);
@@ -13878,6 +13888,11 @@ bool try_capture(LauncherModel* m, const SDL_Event& ev) {
     // axis push (past a dead threshold) commits. PSX only accepts events from
     // the player's selected Input source device.
     if (m->capturing && m->capture_pad) {
+        /* A click anywhere cancels: the bind stays as it was. */
+        if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            launcher_model_cancel_capture(m);
+            return true;
+        }
         if (m->settings_bindings && m->capture_assist) {
             if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
                 const int button = (int)LNG_EVGBTN(ev);
@@ -14020,6 +14035,9 @@ bool try_capture(LauncherModel* m, const SDL_Event& ev) {
             return true;
         }
         if (ev.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) {
+            /* NES binds pad buttons only (the runner has no axis binds): a
+             * stick or trigger is ignored, and it keeps waiting for a button. */
+            if (cap_prof && cap_prof->id && !strcmp(cap_prof->id, "nes")) return true;
             if (from_selected((uint32_t)LNG_EVGAXISWHICH(ev))) {
                 if (m->map_all_wait_release) {
                     try_clear_release_wait((uint32_t)LNG_EVGAXISWHICH(ev));
@@ -14066,8 +14084,16 @@ bool try_capture(LauncherModel* m, const SDL_Event& ev) {
         const SystemProfile* mprof = (const SystemProfile*)m->profile;
         const bool alt_store = mprof && mprof->controller.binds_per_input >= 2;
         if (ev.type == SDL_EVENT_MOUSE_BUTTON_UP) return true;   /* swallow */
+        /* Waiting for a KEY: a gamepad button, or (where mouse buttons can't
+         * be bound) a click anywhere, cancels and keeps the key it had --
+         * a pad player who opened a keyboard bind by mistake can get out. */
+        if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ||
+            (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !alt_store)) {
+            launcher_model_cancel_capture(m);
+            return true;
+        }
         if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-            if (!alt_store || !m->capture_mouse_armed) return true;
+            if (!m->capture_mouse_armed) return true;
             int btn = (int)ev.button.button;      /* SDL: 1 L, 2 M, 3 R, 4/5 side */
             if (btn >= 1 && btn <= 5) {
                 launcher_binds_set_button_slot(m, m->cfg_player + 1, m->capture_btn,
