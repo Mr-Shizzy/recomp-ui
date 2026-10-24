@@ -11701,6 +11701,8 @@ static const RecompLauncherCHostPage* host_page(const LauncherModel* m) {
  * setup a host page's button asked to open (0 = none). */
 static int g_host_open_config;
 extern "C" void recomp_launcher_host_open_config(int player) { g_host_open_config = player + 1; }
+static int g_host_play;
+extern "C" void recomp_launcher_host_play(void) { g_host_play = 1; }
 
 /* One cached texture per IMAGE row path + version. */
 struct HostImage { std::string path; int version = -1; LauncherTexture tex{}; };
@@ -11751,9 +11753,10 @@ static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
         if (ImGui::BeginCombo(id, cur)) {
             for (int c = 0; c < r.choice_count; ++c) {
                 char lbl[128] = "";
-                if (pg->choice_label) pg->choice_label(pg->ctx, i, c, lbl, sizeof(lbl));
+                int st = pg->choice_label ? pg->choice_label(pg->ctx, i, c, lbl, sizeof(lbl)) : 1;
                 ImGui::PushID(c);
-                if (ImGui::Selectable(lbl, c == r.value) && c != r.value)
+                if (ImGui::Selectable(lbl, c == r.value,
+                                      st == 2 ? ImGuiSelectableFlags_Disabled : 0) && c != r.value)
                     pg->row_set(pg->ctx, i, c, rom);
                 ImGui::PopID();
             }
@@ -11789,6 +11792,12 @@ static void draw_host_row(LauncherModel* m, const LauncherTheme& th,
             if (g_host_open_config > 0) {           /* the page asked for a player's keys */
                 launcher_model_open_config(m, g_host_open_config - 1);
                 g_host_open_config = 0;
+            }
+            if (g_host_play) {                      /* the page asked to start the game */
+                g_host_play = 0;
+                if (launcher_model_can_launch(m) && launcher_model_prepare_rom_patch(m) &&
+                    mod_commit_launch(m))
+                    m->action = LNG_ACTION_LAUNCH;
             }
         }
         break;

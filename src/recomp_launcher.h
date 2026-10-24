@@ -1047,6 +1047,9 @@ typedef struct RecompLauncherCModProvider {
 extern "C" {
 #endif
 void recomp_launcher_host_open_config(int player);
+/* From a host page's row_set (a BUTTON press): start the game, as if Play
+ * were pressed (ignored while Play is not possible, e.g. no ROM). */
+void recomp_launcher_host_play(void);
 #ifdef __cplusplus
 }
 #endif
@@ -1084,7 +1087,8 @@ typedef struct RecompLauncherCHostPage {
     const char* title;        /* nav button + page heading, e.g. "Options" */
     int  (*row_count)(void* ctx);
     int  (*row_get)(void* ctx, int index, RecompLauncherCHostRow* out);
-    /* CHOICE rows: label of choice `choice` into out (NUL-terminated). */
+    /* CHOICE rows: label of choice `choice` into out (NUL-terminated).
+     * Return 2 to list it greyed out and not selectable (e.g. an empty slot). */
     int  (*choice_label)(void* ctx, int index, int choice, char* out, int cap);
     /* New value for a TOGGLE/CHOICE/RANGE row, or a BUTTON press (value 1).
      * rom_path is the ROM currently selected in the launcher ("" if none). */
